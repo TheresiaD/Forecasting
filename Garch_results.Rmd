@@ -1,0 +1,290 @@
+---
+title: "GARCH_results"
+author: "Theresia Deiss"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Packages
+
+```{r}
+#install.packages("moments")
+
+library("moments")
+library("quantmod")
+library("rugarch")
+library("tseries")
+library("forecast")
+library("clipr")
+library("xlsx")
+library("latex2exp")
+
+```
+
+
+
+## GARCH RESULTS
+#  In-sample performance
+
+```{r}
+
+# ARIMA(2,1)-GARCH(1,1) model
+garch1    <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(5,5)), mean.model=list(armaOrder=c(1,1)), distribution.model ="std")
+pc1.garch <- ugarchfit(spec=garch1, data=pc1, solver="hybrid") #, solver.control = list(tol = 1e-12))
+pc1.garch
+
+res <- residuals(pc1.garch)
+res <- ts(res,  frequency=252, start = 2015)
+pc1.fc <- pc1-res
+
+jpeg(file = "Chap4_GARCH_InSample.jpeg", width = 7, height = 4.5, units = 'in', res = 300)
+plot(pc1, xlab = "Year", ylab = TeX("$PC_1$"), main = "ARMA(1,1)-GARCH(5,5):\nIn-Sample Performance", col="blue", lty=1, lwd = 2)
+lines(pc1.fc, col="red",lty=1)
+lines(res, col="grey",lty=1)
+legend("bottomright", legend = c( TeX("Actual $PC_1$"), TeX("Predicted $PC_1$"),"Residuals"), col = c("blue", "red", "grey"), lty = c(1,1,1), bty="n")
+dev.off()
+
+acf(res)
+acf((res-mean(res))^2)
+
+pc1Predict<-ugarchboot(pc1.garch, n.ahead = 12, method=c("partial","Full")[1])
+pc1Predict
+
+df <-as.data.frame(pc1Predict, which = "series", type = "q", qtile = c(0.05,0.5, 0.95))
+values <-as.numeric(df[2,])
+values
+class(values)
+
+plot(pc1Predict, which=2)
+lines(values, col="blue")
+
+```
+
+## Out of sample performance: Forecast for one sample period
+
+```{r}
+
+# Number of days to forecast:
+testPeriod.length <- 12
+
+# Index of end date for sampling period
+pc1.length   <- length(pc1)
+pc1.time     <- 2015+c(1:pc1.length)/252
+startMonth   <- 1
+endMonth     <- 1334    # corresponds to March 12th 2020
+samplePeriod <- ts(pc1[startMonth:endMonth], start=2015, frequency=252)
+samplePeriod.length <- endMonth-startMonth+1
+
+# Fit GARCH
+garch1    <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(5,5)), mean.model=list(armaOrder=c(1,1)), distribution.model ="std")
+fit.sample.garch <- ugarchfit(spec=garch1, data = samplePeriod, solver="hybrid") #, solver.control = list(tol = 1e-12))
+fit.sample.garch
+
+# Forecasts for testing period 
+pc1Predict<-ugarchboot(fit.sample.garch, n.ahead = testPeriod.length, method=c("partial","Full")[1])
+pc1Predict
+fc.GARCH <- pc1Predict@forc@forecast$seriesFor[,1]
+
+# Confidence Intervals
+df <-as.data.frame(pc1Predict, which = "series", type = "q", qtile = c(0.05, 0.95))
+q0.05 <-as.numeric(df[1,])
+q0.95 <-as.numeric(df[2,])
+
+q0.95-q0.05 - (arimaq0.95-arimaq0.05)
+
+# GRAPH: SECTION OF SAMPLING PERIOD + FORECASTS
+
+# Decide section to plot:
+# startDay.sec <- pc1.time[1305]
+# startDay.index <- which(pc1.time == startDay.sec)
+startDay.index <- 1284 # corresponds to Jan 2020 
+sec.length <- length(pc1[startDay.index:(endMonth+testPeriod.length)])
+sec.time <- pc1.time[startDay.index:(endMonth+testPeriod.length)]
+samplePeriod.sec <- samplePeriod[(startDay.index):samplePeriod.length]
+
+jpeg(file = "Chap4_GARCH_OutOfSample.jpeg", width = 7, height = 4.5, units = 'in', res = 300)
+par(mfrow=c(1,1))
+plot(sec.time,c(samplePeriod.sec,fc.GARCH), ylim=c(0,5), lty=1, type="n", xaxt = "n", xlab = "Time", ylab = TeX("$PC_1$"))
+lines(sec.time[1:(sec.length-testPeriod.length)], samplePeriod.sec, lty=1)
+points(sec.time[(sec.length-testPeriod.length+1):sec.length], fc.GARCH, pch=20, col = "red") 
+lines(sec.time[(sec.length-testPeriod.length+1):sec.length], q0.95, lty=2, col = "blue") 
+lines(sec.time[(sec.length-testPeriod.length+1):sec.length], q0.05, lty=2, col = "blue") 
+points(sec.time[(sec.length-testPeriod.length+1):sec.length], pc1[(endMonth+1):(endMonth+testPeriod.length)], pch=20) 
+axis(1, at = c(pc1.time[1284],pc1.time[1305], pc1.time[1334]),  labels = c("Jan 2020", "Feb 2020", "March 12th 2020"))
+title("ARMA(1,1)-GARCH(5,5):\nOut-of-Sample Performance")
+legend("bottomright", legend = c( "Observation", "Forecast", "95% CI", TeX("$PC_1$")), col = c("black", "red", "blue"),lty=c(NA,NA,2,1),  pch = c(20,20, NA, NA), bty="n" ) #, horiz=TRUE)
+dev.off()
+
+```
+
+## SECOND Out of sample performance (Only for performance measures)
+
+```{r}
+# SECOND OUT-OF-SAMPLE PERFORMANCE (Only for performance measures)
+
+# SET SAMPLING PERIOD
+# Index of end date for sampling period
+pc1.length   <- length(pc1)
+pc1.time     <- 2015+c(1:pc1.length)/252
+startMonth   <- 1
+endMonth2     <- 774    # corresponds to January 1st 2018
+endMonth2     <- 1104   # corresponds to April 15th 2019 (end of sampling period)
+#endMonth2     <- 950
+#endMonth2     <- 847
+samplePeriod2 <- ts(pc1[startMonth:endMonth2], start=2015, frequency=252)
+samplePeriod2.length <- endMonth2-startMonth+1
+
+# Fit ARIMA(2,1,1)
+fit.sample2_ARIMA211 <- arima(samplePeriod2, order=c(2,1,1))
+pred2_ARIMA211 <- predict(fit.sample2_ARIMA211, n.ahead = testPeriod.length)
+
+# Fit ARIMA(0,1,0)
+fit.sample2_ARIMA010 <- arima(samplePeriod2, order=c(0,1,0))
+pred2_ARIMA010 <- predict(fit.sample2_ARIMA010, n.ahead = testPeriod.length)
+
+# Fit GARCH
+garch2    <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(5,5)), mean.model=list(armaOrder=c(1,1)), distribution.model ="std")
+fit.sample.garch2 <- ugarchfit(spec=garch2, data = samplePeriod2, solver="hybrid") #, solver.control = list(tol = 1e-12))
+fit.sample.garch2
+
+# Forecasts for testing period 
+pc1Predict2<-ugarchboot(fit.sample.garch2, n.ahead = testPeriod.length, method=c("partial","Full")[1])
+pc1Predict2
+fc.GARCH2 <- pc1Predict2@forc@forecast$seriesFor[,1]
+
+```
+
+# Model comparison
+
+```{r}
+
+#library(Metrics)
+
+# Define data
+
+obsIS  <- pc1
+obsOS  <- pc1[(endMonth+1):(endMonth+testPeriod.length)]
+obsOS2 <- pc1[(endMonth2+1):(endMonth2+testPeriod.length)]
+
+fc_IS_ARIMA      <- pred_pc1                    # ARIMA211
+fc_OS_ARIMA      <- pred$pred
+fc_OS_ARIMA2     <- pred2_ARIMA211$pred
+
+fc_IS_GARCH      <- pc1.fc                      # GARCH
+fc_OS_GARCH      <- fc.GARCH
+fc_OS_GARCH2     <- fc.GARCH2
+
+fc_IS_ARIMA010   <- pred_pc1_ARIMA010           # ARIMA010
+fc_OS_ARIMA010   <- pred_ARIMA010$pred
+fc_OS_ARIMA010_2 <- pred2_ARIMA010$pred
+
+# COMPARE IN-SAMPLE PERFORMANCE
+
+fit211$aic
+fit010$aic
+infocriteria(pc1.garch)
+
+IS_perf_ARIMA <- accuracy(fc_IS_ARIMA, obsIS)[1:5]
+IS_perf_GARCH <- accuracy(fc_IS_GARCH, obsIS)[1:5]
+IS_perf_ARIMA010 <- accuracy(fc_IS_ARIMA010, obsIS)[1:5]
+
+# COMPARE OUT OF SAMPLE PERFORMANCE
+
+# First Out-of-sample performance (testing period: from March 12th 2020)
+OOS_perf_ARIMA <- accuracy(fc_OS_ARIMA, obsOS)[1:5]
+OOS_perf_GARCH <- accuracy(fc_OS_GARCH, obsOS)[1:5]
+OOS_perf_ARIMA010 <- accuracy(fc_OS_ARIMA010, obsOS)[1:5]
+
+# Second Out-of-sample performance (testing period: from January 1st 2018)
+OOS_perf_ARIMA2 <- accuracy(fc_OS_ARIMA2, obsOS2)[1:5]
+OOS_perf_GARCH2 <- accuracy(fc_OS_GARCH2, obsOS2)[1:5]
+OOS_perf_ARIMA010_2 <- accuracy(fc_OS_ARIMA010_2, obsOS2)[1:5]
+
+# Store values
+
+# In-sample
+df_perfMeasures_IS <- data.frame(matrix(ncol = 7, nrow = 0))
+df_perfMeasures_IS <- rbind(df_perfMeasures_IS, c("ARIMA211",IS_perf_ARIMA, fit211$aic))
+df_perfMeasures_IS <- rbind(df_perfMeasures_IS, c("GARCH",IS_perf_GARCH,infocriteria(pc1.garch)[1]))
+df_perfMeasures_IS <- rbind(df_perfMeasures_IS, c("ARIMA010",IS_perf_ARIMA010,fit010$aic))
+colnames(df_perfMeasures_IS) <- c("Model", "ME", "RMSE", "MAE", "MPE", "MAPE", "AIC")
+
+# Out-of-sample 1
+df_perfMeasures_OOS <- data.frame(matrix(ncol = 6, nrow = 0))
+df_perfMeasures_OOS <- rbind(df_perfMeasures_OOS, c("ARIMA211",OOS_perf_ARIMA))
+df_perfMeasures_OOS <- rbind(df_perfMeasures_OOS, c("GARCH",OOS_perf_GARCH))
+df_perfMeasures_OOS <- rbind(df_perfMeasures_OOS, c("ARIMA010",OOS_perf_ARIMA010))
+colnames(df_perfMeasures_OOS) <- c("Model", "ME", "RMSE", "MAE", "MPE", "MAPE")
+
+# Out-of-sample 2
+df_perfMeasures_OOS2 <- data.frame(matrix(ncol = 6, nrow = 0))
+df_perfMeasures_OOS2 <- rbind(df_perfMeasures_OOS2, c("ARIMA211",OOS_perf_ARIMA2))
+df_perfMeasures_OOS2 <- rbind(df_perfMeasures_OOS2, c("GARCH",OOS_perf_GARCH2))
+df_perfMeasures_OOS2 <- rbind(df_perfMeasures_OOS2, c("ARIMA010",OOS_perf_ARIMA010_2))
+colnames(df_perfMeasures_OOS2) <- c("Model", "ME", "RMSE", "MAE", "MPE", "MAPE")
+
+# Copy in clipboard
+#write.xlsx(df_perfMeasures_IS, file = "versuch.xlsx", sheetName = "Sheet1", col.names = TRUE, row.names = TRUE, append = FALSE)
+#write.xlsx(df_perfMeasures_OOS, file = "versuch2.xlsx", sheetName = "Sheet1", col.names = TRUE, row.names = TRUE, append = FALSE)
+
+clipr::write_clip(df_perfMeasures_IS) 
+
+# Jarque-Bera statistic: check if residuals are normal
+jarque.bera.test(fc_IS_ARIMA - obsIS)          # p-value small, res not normal! bad
+jarque.bera.test(fc_IS_GARCH - obsIS)      # p-value small, res not normal! bad
+
+# compare this with qq-plot: see residuals are not normal at the ends..
+qqnorm(fit211$residuals)
+qqnorm(residuals(pc1.garch))
+
+
+# Formulas for accuaracy measures -- Example
+x <- c(-11,2,3,4,5,6)
+y <- c(4,5,6,3,8,9)
+
+mean(x-y)                    #ME
+sqrt(mean((x-y)^2))          #RMSE
+mean(abs(x-y))               #MAE
+mean((x-y)/x)*100            #MPE
+mean(abs((x-y)/x))*100       #MAPE
+
+accuracy(y,x)   # !!: accuracy(forecast, actual)
+
+
+```
+
+## Model implications
+
+# Check for volatility in data
+
+```{r}
+
+#library(moments)
+
+# Check kurtosis of first difference
+
+jpeg(file = "Chap5_Histogram.jpeg", width = 7, height = 4.5, units = 'in', res = 300)
+hist(pc1.dif, xlab=TeX("diff($PC_1$)"), ylab="Frequency", main=TeX("Histogram of First Difference of $PC_1$"),
+          col="steelblue", breaks=seq(-1,1,length=30))
+dev.off()
+
+# calculate kurtosis
+kurtosis(pc1.dif)   # value greater than 3 means volatile (3= kurtosis of normal distribution)
+
+# kurtosis
+skewness(pc1.dif)   # negative hence left-skewed
+
+
+# ACF of residuals and squared residuals
+pc1.dif_scaled <- ts(pc1.dif, frequency = 1)
+jpeg(file = "Chap5_ACF_sqrACF.jpeg", width = 9, height = 3, units = 'in', res = 300)
+par(mfrow=c(1,2))
+acf(pc1.dif_scaled,  main = "ACF of First difference", lag.max = 20)
+acf(pc1.dif_scaled^2, main = "ACF of Squared First difference", lag.max = 20)
+#acf(pc1.dif,  main = TeX("\\textbf{ACF of $1^{st}$ difference}"))
+#acf(pc1.dif^2, main = TeX("\\textbf{ACF of squared $1^{st}$ difference}"))
+dev.off()
+
+```

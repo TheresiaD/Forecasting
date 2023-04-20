@@ -1,0 +1,95 @@
+---
+title: "Chapter 3"
+author: "Theresia Deiss"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+## Install packages and load libraries
+
+```{r}
+#install.packages("xlsx")
+#install.packages("readxl")
+#install.packages("ggplot2")
+#install.packages("tseries")
+#install.packages("ggfortify")
+#install.packages("forecast")
+#install.packages("Metrics")
+
+library("xlsx")
+library("readxl")
+library("rlang")
+library("tseries")
+library("forecast")
+library("latex2exp")
+
+setwd("C:\\Users\\deiss\\Desktop\\Semester\\SDSU_Spring_Semester\\Y_Master_Thesis\\Coding\\Plots")
+
+getwd()
+
+```
+
+## Loading the Data Set
+Loading data set of interest rates from excel sheet
+
+```{r}
+
+data <- read_excel("DataSet_InterestRates.xlsx", col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric"))
+
+data <- data.frame(data)
+#data$Date <- as.Date(data$Date)
+#data <- ts(data)
+
+data.5y  <- ts(data$X5Y,  frequency=252, start = 2015)
+data.10y <- ts(data$X10Y, frequency=252, start = 2015)
+data.15y <- ts(data$X15Y, frequency=252, start = 2015)
+data.20y <- ts(data$X20Y, frequency=252, start = 2015)
+data.25y <- ts(data$X25Y, frequency=252, start = 2015)
+```
+
+
+## Trend Analysis
+
+```{r}
+# Plot one interest rate 
+plot(data.5y, xlab = "Year", ylab = "Interest Rate", main = "5Y Interest rate")
+
+# Plot all interest rates
+
+jpeg(file = "Chap3_Interest_Rates.jpeg", width = 7, height = 5, units = 'in', res = 300)
+plot(data.5y, xlab = "Year", ylab = "Interest Rate", main = "Interest Rates Over Time", ylim=c(-0.6,2))
+lines(data.10y, col="blue",lty=1)
+lines(data.15y, col="red",lty=1)
+lines(data.20y, col="green",lty=1)
+lines(data.25y, col="orange",lty=1)
+legend("topright", legend = c( "  5Y", "10Y","15Y","20Y","25Y"), col = c("black", "blue", "red","green","orange"), lty = c(1,1,1,1,1),  bty="n", cex=0.7)
+dev.off()
+
+```
+
+## PCA
+
+```{r}
+data.pca <- prcomp(data[,c(2:6)], center = TRUE,scale. = TRUE)
+
+summary(data.pca)
+
+# Percentage of std deviation each PC accounts for
+jpeg(file = "Chap3_PC.jpeg", width = 6, height = 3.5, units = 'in', res = 300)
+data.pca.var <- data.pca$sdev^2
+data.pca.var.per <- round(data.pca.var/sum(data.pca.var)*100, 1)
+barplot(data.pca.var.per, main="Percentage of Explained Variation", xlab="Principal Component", ylab="Variation explained (%)", ylim = c(0, 100), names = c("PC1", "PC2", "PC3", "PC4","PC5"))
+dev.off()
+
+```
+# Reversion of PCA
+
+```{r}
+
+# Test: Reverse PCA to get original data:
+# t(t(data.pca$x %*% t(data.pca$rotation)) * data.pca$scale + data.pca$center)
+
+
+```
+
+

@@ -1,0 +1,202 @@
+---
+title: "ARIMA results"
+author: "Theresia Deiss"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Loading packages
+
+```{r}
+library("latex2exp")
+library("grDevices")
+library("tseries")
+library("forecast")
+
+setwd("C:\\Users\\deiss\\Desktop\\Semester\\SDSU_Spring_Semester\\Y_Master_Thesis\\Coding\\Plots")
+```
+
+
+## Trend analysis
+
+```{r}
+
+pc1 = data.pca$x[,1]
+pc1.dif = diff(pc1)
+
+# Make TS
+pc1 <- ts(pc1,  frequency=252, start = 2015)
+pc1.dif <- ts(pc1.dif,  frequency=252, start = 2015)
+
+# Plot pc1 and 1st difference
+jpeg(file = "Chap4_PC1.jpeg", width = 7, height = 8, units = 'in', res = 300)
+par(mfrow=c(2,1))
+plot(pc1, xlab = "Year", ylab = TeX("$PC_1$"), col="blue", main = TeX("\\textbf{PC$_{1}$ over Time}"))
+#title( TeX("\\textbf{S&P 500 price ($Z_t$)}"))
+plot(pc1.dif, xlab = "Year", ylab = TeX("diff($PC_1$)"), col="blue", main = TeX("\\textbf{First Difference of PC$_{1}$ over Time}"))
+#title( TeX("\\textbf{S&P 500 return ($\\textbf{1}^{st}$ difference $Z_t-Z_{t-1}$)}"))
+dev.off()
+
+```
+
+
+## Unit root analysis: test stationarity
+
+Augmented Dickey-Fuller Test:
+H0: The time series is non-stationary (equiv: TS has a unit root)
+HA: The time series is stationary.
+If p-value<0.05: reject H0, hence TS is stationary.
+
+```{r}
+
+# Augmented Dickey-Fuller Test
+adf.test(pc1)
+adf.test(pc1.dif)
+
+```
+# Analysis of optimal parameters
+
+```{r}
+# Analysis of ACF and PACF
+
+pc1.dif_scale <- ts(pc1.dif,  frequency=1)
+
+jpeg(file = "Chap4_ACF_PC.jpeg", width = 7, height = 6.5, units = 'in', res = 300)
+par(mfrow=c(2,1))
+#acf(pc1.dif,  main = TeX("\\textbf{ACF of $1^{st}$ Difference}"))
+acf(pc1.dif_scale,  main = TeX("\\textbf{ACF of First Difference}"), lag.max = 20)
+acf(pc1.dif_scale, type="partial", main = TeX("\\textbf{PACF of First Difference}"), lag.max = 20)
+dev.off()
+
+acf(pc1.dif)
+acf(pc1.dif, type="partial")
+
+acf(pc1.dif^2)
+```
+
+# Model fit
+
+```{r}
+
+# Model ARIMA211 -- scaled
+pc1_scale <- ts(pc1, frequency = 1)
+fit211_scale <- arima(pc1_scale, order=c(2,1,1))
+jpeg(file = "Chap4_ARIMA211.jpeg", width = 7, height = 6, units = 'in', res = 300)
+tsdiag(fit211_scale, gof.lag = 10)
+dev.off()
+
+# Model ARIMA211 -- not scaled
+fit211 <- arima(pc1, order=c(2,1,1))
+fit211
+autoplot(fit211)
+
+res = fit211$residuals
+acf(res)
+acf((res-mean(res))^2)
+
+# Fit of best guess
+fit010 <- arima(pc1_scale, order=c(0,1,0))
+jpeg(file = "Chap4_ARIMA010.jpeg", width = 7, height = 6, units = 'in', res = 300)
+tsdiag(fit010)
+dev.off()
+
+fit010
+autoplot(fit010)
+
+# Best guess of auto.arima
+auto.arima(pc1, ic = c("aicc", "aic", "bic"))
+
+```
+
+## In-sample performance
+
+```{r}
+res = fit211$residuals
+pred_pc1 = pc1-res
+
+jpeg(file = "Chap4_ARIMA211_InSample.jpeg", width = 7, height = 4.5, units = 'in', res = 300)
+plot(pc1, xlab = "Year", ylab = TeX("$PC_1$"), main = "ARIMA(2,1,1):\nIn-Sample Performance", col="blue", lty=1, lwd = 2)
+lines(pred_pc1, col="red",lty=1)
+lines(res, col="grey",lty=1)
+legend("bottomright", legend = c( TeX("Actual $PC_1$"), TeX("Predicted $PC_1$"),"Residuals"), col = c("blue", "red", "grey"), lty = c(1,1,1), bty="n")
+dev.off()
+
+# In-sample performance values
+sqrt(mean((fit211$residuals)^2))               # RMSE
+mean(abs((fit211$residuals)/pc1)) * 100        # MAPE
+1/length(pc1)*sum(abs(fit211$residuals))       # MAE
+
+# Jarque-Bera statistic: check if residuals are normal
+jarque.bera.test(fit211$residuals)          # p-value small, res not normal! bad
+# compare this with qq-plot: see residuals are not normal at the ends..
+qqnorm(fit211$residuals)
+
+```
+
+## Out of sample performance: Forecast for one sample period
+
+```{r}
+
+# Number of days to forecast:
+testPeriod.length <- 12
+
+# Index of end date for sampling period
+pc1.length   <- length(pc1)
+pc1.time     <- 2015+c(1:pc1.length)/252
+startMonth   <- 1
+endMonth     <- 1334    # corresponds to March 12th 2020
+samplePeriod <- ts(pc1[startMonth:endMonth], start=2015, frequency=252)
+samplePeriod.length <- endMonth-startMonth+1
+
+# Fit ARIMA(211)
+fit.sample <- arima(samplePeriod, order=c(2,1,1))
+fit.sample
+
+# Forecasts for testing period 
+pred <- predict(fit.sample, n.ahead = testPeriod.length)
+
+# Out of sample test ARIMA211 for PC1
+forecasts <- pred$pred
+observations <- pc1[(endMonth+1):(endMonth+testPeriod.length)]
+diff <- forecasts-observations
+
+# GRAPH: SECTION OF SAMPLING PERIOD + FORECASTS
+
+# Decide section to plot:
+# startDay.sec <- pc1.time[1305]
+# startDay.index <- which(pc1.time == startDay.sec)
+startDay.index <- 1284 # corresponds to Jan 2020 
+sec.length <- length(pc1[startDay.index:(endMonth+testPeriod.length)])
+sec.time <- pc1.time[startDay.index:(endMonth+testPeriod.length)]
+samplePeriod.sec <- samplePeriod[(startDay.index):samplePeriod.length]
+
+
+jpeg(file = "Chap4_ARIMA211_OutOfSample.jpeg", width = 7, height = 4.5, units = 'in', res = 300)
+par(mfrow=c(1,1))
+plot(sec.time,c(samplePeriod.sec,pred$pred), ylim=c(0,5), lty=1, type="n", xaxt = "n", xlab = "Time", ylab = TeX("$PC_1$"))
+lines(sec.time[1:(sec.length-testPeriod.length)],samplePeriod.sec, lty=1)
+points(sec.time[(sec.length-testPeriod.length+1):sec.length], pred$pred, pch=20, col = "red") 
+lines(sec.time[(sec.length-testPeriod.length+1):sec.length], pred$pred + 1.96*pred$se, lty=2, col = "blue") 
+lines(sec.time[(sec.length-testPeriod.length+1):sec.length], pred$pred - 1.96*pred$se, lty=2, col = "blue") 
+points(sec.time[(sec.length-testPeriod.length+1):sec.length], pc1[(endMonth+1):(endMonth+testPeriod.length)], pch=20) 
+axis(1, at = c(pc1.time[1284],pc1.time[1305], pc1.time[1334]),  labels = c("Jan 2020", "Feb 2020", "March 12th 2020"))
+#axis(1, at = c(pc1.time[1284],pc1.time[1305], pc1.time[1325], pc1.time[1334]),  labels = c("Jan 2020", "Feb 2020","March 20", "March 12th 20"))
+title("ARIMA(2,1,1):\nOut-of-Sample Performance")
+legend("bottomright", legend = c( "Observation", "Forecast", "95% CI", TeX("$PC_1$")), col = c("black", "red", "blue"),lty=c(NA,NA,2,1),  pch = c(20,20, NA, NA), bty="n" ) #, horiz=TRUE)
+dev.off()
+
+```
+## Some data for ARIMA010
+
+```{r}
+
+res010 = fit010$residuals
+pred_pc1_ARIMA010 = pc1-res010
+
+fit.sample_ARIMA010 <- arima(samplePeriod, order=c(0,1,0))
+pred_ARIMA010 <- predict(fit.sample_ARIMA010, n.ahead = testPeriod.length)
+
+```
+
+
+
