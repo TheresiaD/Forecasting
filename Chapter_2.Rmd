@@ -1,0 +1,205 @@
+---
+title: "Chapter 2"
+author: "Theresia Deiss"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Install and load packages
+
+```{r }
+#install.packages("nortsTest")
+#install.packages("latex2exp")
+#install.packages("grDevices")
+
+
+library("MASS")
+library("tseries")
+library("forecast")
+library("nortsTest")
+library("latex2exp")
+library("grDevices")
+
+setwd("C:\\Users\\deiss\\Desktop\\Semester\\SDSU_Spring_Semester\\Y_Master_Thesis\\Coding\\Plots")
+```
+
+## Loading Data Set
+
+
+
+```{r}
+
+# Load data set and derive index prices
+data(SP500)
+SP500close <- diffinv(SP500, xi = 1464.47	)  
+SP500close <- ts(SP500close,  frequency=252, start = 1990)
+SP500      <- diff(SP500close)
+
+# Plot index price and return
+jpeg(file = "Chap2_SP500.jpeg", width = 7, height = 6, units = 'in', res = 300)
+par(mfrow=c(2,1))
+plot(SP500close, type = 'l', col="blue", xlab = "Year", ylab = "Price")
+title( TeX("\\textbf{S&P 500 Price ($Z_t$)}"))
+plot(SP500, type = 'l', col="blue", xlab = "Year", ylab = "Return")
+title( TeX("\\textbf{S&P 500 Return (First difference $Z_t-Z_{t-1}$)}"))
+#title( TeX("\\textbf{S&P 500 return ($\\textbf{1}^{st}$ difference $Z_t-Z_{t-1}$)}"))
+dev.off()
+
+# Check for stationarity
+adf.test(SP500)
+
+SP500close_scale <- ts(SP500close, frequency = 1)
+# Model1: ARIMA 2-1-1
+fit211 <- arima(SP500close_scale, order=c(2,1,1))
+tsdiag(fit211)
+fit211
+#autoplot(fit211)
+
+jpeg(file = "Chap2_ARIMA211_diagplots.jpeg",width = 7, height = 6, units = 'in', res = 300)
+tsdiag(fit211, lag.max = 10)
+dev.off()
+
+# Best guess of auto.arima
+auto.arima(SP500close)
+
+# Model2: ARIMA 0-1-0
+fit010 <- arima(SP500close_scale, order=c(0,1,0))
+tsdiag(fit010)
+fit010
+#autoplot(fit010)
+
+jpeg(file = "Chap2_ARIMA010_diagplots.jpeg",width = 7, height = 6, units = 'in', res = 300)
+tsdiag(fit010)
+dev.off()
+
+# Check ARCH-effects
+arch.test(SP500,arch = c("box","Lm"),alpha = 0.05,lag.max = 2)
+
+acf(SP500)                    # looks like white noise, therefor look at squared
+acf((SP500 - mean(SP500))^2)  # see: correlates, evidence of serial correlation, heteroskelasticity
+
+# Forecast using GARCH
+sp.garch <- garch(SP500, trace = F)
+sp.res <- sp.garch$res[-1]
+
+# Compare ACF
+jpeg(file = "Chap2_GARCH_ACF.jpeg",width = 7, height = 6, units = 'in', res = 300)
+par(mfrow=c(2,2))
+acf(SP500, main="ACF of S&P500", breaks = c(4, 8, 12, 16, 18, 22))
+acf(sp.res, main="ACF of Residuals of GARCH")
+acf((SP500 - mean(SP500))^2, main= "ACF of Squared Series \n (SP500 - mean(SP500))²")
+acf(sp.res^2, main="ACF of Squared Residuals \n of GARCH", lag.max = 20)
+dev.off()
+
+# Compare ACF: Plot with scaled lags
+SP500_scale <- ts(SP500,  frequency=1, start = 1990)  # scaling lags
+
+jpeg(file = "Chap2_GARCH_ACF_scaled.jpeg",width = 7, height = 6, units = 'in', res = 300)
+par(mfrow=c(2,2))
+acf(SP500_scale, main="ACF of S&P500", lag.max = 20)
+acf(sp.res, main="ACF of Residuals of GARCH", lag.max = 20)
+acf((SP500_scale - mean(SP500_scale))^2, main= "ACF of Squared Series \n (SP500 - mean(SP500))²", lag.max = 20)
+acf(sp.res^2, main="ACF of Squared Residuals \n of GARCH", lag.max = 20)
+dev.off()
+
+```
+
+```{r}
+
+
+```
+
+
+
+
+
+```{r}
+#install.packages("nortsTest")
+install.packages("latex2exp")
+
+library("MASS")
+library("tseries")
+library("forecast")
+library("nortsTest")
+library(latex2exp)
+
+data(SP500)
+
+SP500close <- diffinv(SP500, xi = 1464.47	)  
+
+
+SP500close <- ts(SP500close,  frequency=252, start = 1990)
+SP500 <- diff(SP500close)
+
+par(mfrow=c(2,1))
+plot(SP500close, type = 'l', col="blue", xlab = "year", ylab = "price")
+title( TeX("S&P 500 price ($Z_t$)"))
+plot(SP500, type = 'l', col="blue", xlab = "year", ylab = "return")
+title( TeX("S&P 500 return (1st difference $Z_t-Z_{t-1}$)"))
+
+plot(SP500close, type = 'l', col="blue", xlab = "year", ylab = "price")
+lines(SP500, type = 'l', col="blue", xlab = "year", ylab = "return")
+title( TeX("S&P 500 return (1st difference $Z_t-Z_{t-1}$)"))
+
+# Model1: ARIMA 2-1-1
+fit211 <- arima(SP500close, order=c(2,1,1))
+tsdiag(fit211)
+fit211
+#autoplot(fit211)
+
+# Best guess of auto.arima
+auto.arima(SP500close)
+
+# Model2: ARIMA 0-1-0
+fit010 <- arima(SP500close, order=c(0,1,0))
+tsdiag(fit010)
+fit010
+#autoplot(fit010)
+
+# Check ARCH-effects
+arch.test(SP500,arch = c("box","Lm"),alpha = 0.05,lag.max = 2)
+
+acf(SP500)                    # looks like white noise, therefor look at squared
+acf((SP500 - mean(SP500))^2)  # see: correlates, evidence of serial correlation, heteroskelasticity
+
+# Forecast using GARCH
+sp.garch <- garch(SP500, trace = F)
+sp.res <- sp.garch$res[-1]
+
+arch.test(sp.res,arch = c("box","Lm"),alpha = 0.05,lag.max = 2)
+
+acf(sp.res)
+acf(sp.res^2)
+
+mean(SP500)
+
+length(SP500)
+length(sp.garch$res)
+
+sp.pred <- SP500-sp.res
+head(sp.pred)
+
+plot(SP500[1:50], type = 'l', col="blue", lty=1, lwd = 2)
+lines(sp.pred[1:50], col="red",lty=1)
+
+auto.arima(SP500)
+
+fit201 <- arima(SP500, order=c(2,0,1))
+tsdiag(fit201)
+fit201
+
+sp.arima.pred <- SP500+fit201$res
+plot(SP500, type = 'l', col="blue", lty=1, lwd = 2)
+lines(sp.arima.pred, col="red",lty=1)
+
+RMSE <- sqrt(mean((SP500 - sp.pred)^2))
+RMSE
+
+RMSE2 <- sqrt(mean((SP500 - sp.arima.pred)^2))
+RMSE2
+
+head(sp.pred)
+
+```
